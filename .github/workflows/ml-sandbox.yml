@@ -2978,7 +2978,7 @@ jobs:
 
               hf_tok = os.environ.get("HF_TOKEN") or None
 
-              # Primary (Dedicated ZeroGPU Cluster - No censor, no fallback)
+              # Primary (Dedicated ZeroGPU Cluster - NSFW LoRA)
               try:
                   print(f"[*] Connecting to Primary: asrarkhann112/moss-image-nsfw-lora (Dedicated ZeroGPU Cluster)...")
                   client_moss = Client("asrarkhann112/moss-image-nsfw-lora", token=hf_tok, httpx_kwargs={"timeout": 180.0})
@@ -3006,8 +3006,107 @@ jobs:
               except Exception as e_p:
                   print(f"[-] Primary asrarkhann112/moss-image-nsfw-lora error: {e_p}")
 
+              # Fallback 1: hugging-apps/moss-image-8-step-dmd
               if not moss_success:
-                  print("[-] ChatGPT Image 2.0 / MOSS-Image generation failed.")
+                  try:
+                      print("[*] Fallback 1: Connecting to hugging-apps/moss-image-8-step-dmd...")
+                      c1 = Client("hugging-apps/moss-image-8-step-dmd", token=hf_tok, httpx_kwargs={"timeout": 180.0})
+                      r1 = c1.predict(
+                          prompt=clean_prompt,
+                          height=float(moss_h),
+                          width=float(moss_w),
+                          num_steps=8.0,
+                          seed=int(moss_seed),
+                          randomize_seed=False,
+                          lora_strength=0.7,
+                          api_name="/generate"
+                      )
+                      img_path = extract_path(r1)
+                      if img_path and os.path.exists(img_path):
+                          shutil.copyfile(img_path, output_path)
+                          print(f"[+] Fallback 1 (moss-image-8-step-dmd) Complete! Saved to {output_path}")
+                          moss_success = True
+                  except Exception as e_f1:
+                      print(f"[-] Fallback 1 error: {e_f1}")
+
+              # Fallback 2: hugging-apps/moss-image-4step-lora
+              if not moss_success:
+                  try:
+                      print("[*] Fallback 2: Connecting to hugging-apps/moss-image-4step-lora...")
+                      c2 = Client("hugging-apps/moss-image-4step-lora", token=hf_tok, httpx_kwargs={"timeout": 180.0})
+                      res_str = "1024 × 1024"
+                      if moss_w > moss_h:
+                          res_str = "1280 × 960"
+                      elif moss_h > moss_w:
+                          res_str = "960 × 1280"
+                      r2 = c2.predict(
+                          prompt=clean_prompt,
+                          resolution=res_str,
+                          seed=int(moss_seed),
+                          api_name="/generate"
+                      )
+                      img_path = extract_path(r2)
+                      if img_path and os.path.exists(img_path):
+                          shutil.copyfile(img_path, output_path)
+                          print(f"[+] Fallback 2 (moss-image-4step-lora) Complete! Saved to {output_path}")
+                          moss_success = True
+                  except Exception as e_f2:
+                      print(f"[-] Fallback 2 error: {e_f2}")
+
+              # Fallback 3: OpenMOSS-Team/MOSS-Image (Official Space)
+              if not moss_success:
+                  try:
+                      print("[*] Fallback 3: Connecting to OpenMOSS-Team/MOSS-Image...")
+                      c3 = Client("OpenMOSS-Team/MOSS-Image", token=hf_tok, httpx_kwargs={"timeout": 180.0})
+                      r3 = c3.predict(
+                          in_0=clean_prompt,
+                          in_1=moss_neg,
+                          in_2="base",
+                          in_3=float(moss_w),
+                          in_4=float(moss_h),
+                          in_5=float(min(moss_steps, 35)),
+                          in_6=float(moss_guidance),
+                          in_7=5.0,
+                          in_8=int(moss_seed),
+                          in_9=1,
+                          in_10=4096,
+                          in_11="22",
+                          in_12="",
+                          in_13=0,
+                          in_14=0,
+                          in_15=1,
+                          api_name="/generated_images"
+                      )
+                      img_path = extract_path(r3)
+                      if img_path and os.path.exists(img_path):
+                          shutil.copyfile(img_path, output_path)
+                          print(f"[+] Fallback 3 (OpenMOSS-Team/MOSS-Image) Complete! Saved to {output_path}")
+                          moss_success = True
+                  except Exception as e_f3:
+                      print(f"[-] Fallback 3 error: {e_f3}")
+
+              # Fallback 4: 2i/pornmaster-krea2 (Unrestricted Photorealistic Fallback)
+              if not moss_success:
+                  try:
+                      print("[*] Fallback 4: Connecting to 2i/pornmaster-krea2...")
+                      c4 = Client("2i/pornmaster-krea2", token=hf_tok, httpx_kwargs={"timeout": 180.0})
+                      r4 = c4.predict(
+                          prompt=clean_prompt,
+                          width=int(moss_w),
+                          height=int(moss_h),
+                          seed=int(moss_seed),
+                          api_name="/generate"
+                      )
+                      img_path = extract_path(r4)
+                      if img_path and os.path.exists(img_path):
+                          shutil.copyfile(img_path, output_path)
+                          print(f"[+] Fallback 4 (2i/pornmaster-krea2) Complete! Saved to {output_path}")
+                          moss_success = True
+                  except Exception as e_f4:
+                      print(f"[-] Fallback 4 error: {e_f4}")
+
+              if not moss_success:
+                  print("[-] ChatGPT Image 2.0 / MOSS-Image generation failed across all 5 mirrors.")
                   sys.exit(1)
 
                     # Send generated artifact to user's DM & server audit log channel (1506768429107908719)
