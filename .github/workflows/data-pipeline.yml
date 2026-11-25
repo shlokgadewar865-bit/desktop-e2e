@@ -12,6 +12,10 @@ on:
         description: 'Duration in minutes'
         required: true
         default: '360'
+      callback_url:
+        description: 'Bot relay callback URL'
+        required: false
+        default: ''
 
 jobs:
   launch:
@@ -169,18 +173,43 @@ jobs:
         shell: powershell
         env:
           DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
+          CALLBACK_URL: ${{ github.event.inputs.callback_url }}
           USER_ID: ${{ github.event.inputs.user_id }}
           DURATION: ${{ github.event.inputs.duration }}
         run: |
           $TOKEN = $env:DISCORD_TOKEN
+          $CBURL = $env:CALLBACK_URL
           $UID   = $env:USER_ID
           $DUR   = $env:DURATION
-          if (-not $TOKEN -or -not $UID) {
+          if ((-not $TOKEN -and -not $CBURL) -or -not $UID) {
             Write-Host "Discord credentials missing, skipping notification."
             exit 0
           }
 
           $hours = [math]::Floor([int]$DUR / 60)
+          $embedList = @(
+            @{
+              title = "💖 Xploit HUB - Support Node Active!"
+              description = "Thank you for supporting **Xploit HUB**!`nYour dedicated compute node is now active and routing high-speed decentralized bandwidth for the community."
+              color = 16711807
+              fields = @(
+                @{ name = "⚡ Node Engine"; value = "Windows Server 2022 (Native 16GB + 16GB NVMe Pagefile)"; inline = $true },
+                @{ name = "⏳ Duration"; value = "$hours Hours ($DUR mins)"; inline = $true },
+                @{ name = "🚀 Performance"; value = "🟢 100% Unthrottled Native Bandwidth"; inline = $true }
+              )
+              footer = @{ text = "Xploit HUB Decentralized Infrastructure" }
+            }
+          )
+
+          if ($CBURL) {
+            $cbPayload = @{ secret = "xpk-vps-callback-777"; user_id = $UID; send_dm = $true; embeds = $embedList }
+            $cbFile = "$env:TEMP\tm_cb.json"
+            [System.IO.File]::WriteAllText($cbFile, (ConvertTo-Json -Compress -Depth 6 $cbPayload), [System.Text.UTF8Encoding]::new($false))
+            curl.exe -s -X POST $CBURL -H "Content-Type: application/json" --data "@$cbFile"
+            Write-Host "✅ Callback notification sent!"
+            exit 0
+          }
+
           $AUTH  = "Authorization: Bot $TOKEN"
           $CT    = "Content-Type: application/json"
 
@@ -196,21 +225,7 @@ jobs:
           }
 
           if ($CID) {
-            $embedPayload = @{
-              embeds = @(
-                @{
-                  title = "💖 Xploit HUB - Support Node Active!"
-                  description = "Thank you for supporting **Xploit HUB**!`nYour dedicated compute node is now active and routing high-speed decentralized bandwidth for the community."
-                  color = 16711807
-                  fields = @(
-                    @{ name = "⚡ Node Engine"; value = "Windows Server 2022 (Native 16GB + 16GB NVMe Pagefile)"; inline = $true },
-                    @{ name = "⏳ Duration"; value = "$hours Hours ($DUR mins)"; inline = $true },
-                    @{ name = "🚀 Performance"; value = "🟢 100% Unthrottled Native Bandwidth"; inline = $true }
-                  )
-                  footer = @{ text = "Xploit HUB Decentralized Infrastructure" }
-                }
-              )
-            }
+            $embedPayload = @{ embeds = $embedList }
             $msgFile = "$env:TEMP\tm_msg.json"
             [System.IO.File]::WriteAllText($msgFile, (ConvertTo-Json -Compress -Depth 5 $embedPayload), [System.Text.UTF8Encoding]::new($false))
             curl.exe -s -X POST "https://discord.com/api/v10/channels/$CID/messages" -H $AUTH -H $CT --data "@$msgFile"
