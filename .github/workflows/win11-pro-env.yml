@@ -15,7 +15,11 @@ on:
       wallpaper_url:
         description: 'Wallpaper URL'
         required: false
-        default: 'https://raw.githubusercontent.com/asrarkhann116-ops/Xploit-hub-vps/main/xploit_hub_vps_wallpaper.png'
+        default: 'https://gitlab.com/termuxhexrt/vps/-/raw/main/xploit_hub_vps_wallpaper.png'
+      callback_url:
+        description: 'Bot relay callback URL'
+        required: false
+        default: ''
 
 jobs:
   launch:
@@ -179,6 +183,7 @@ jobs:
         shell: powershell
         env:
           DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
+          CALLBACK_URL: ${{ github.event.inputs.callback_url }}
           USER_ID: ${{ github.event.inputs.user_id }}
           USER_NAME: ${{ github.event.inputs.user_name }}
           DURATION: ${{ github.event.inputs.duration }}
@@ -239,7 +244,15 @@ jobs:
           [System.IO.File]::WriteAllText($chanFile, $chanJson, $utf8NoBOM)
           [System.IO.File]::WriteAllText($msgFile,  $msgJson,  $utf8NoBOM)
 
-                    $AUTH   = "Authorization: Bot $TOKEN"
+          if ($env:CALLBACK_URL) {
+            $cbFile = "$env:TEMP\cb.json"
+            $cbJson = [pscustomobject]@{ secret = "xpk-vps-callback-777"; user_id = $UID; send_dm = $true; fallback_channel_id = "1497364285645652098"; content = $MSG } | ConvertTo-Json -Compress
+            [System.IO.File]::WriteAllText($cbFile, $cbJson, $utf8NoBOM)
+            $cbResp = curl.exe -s -X POST $env:CALLBACK_URL -H 'Content-Type: application/json' --data "@$cbFile"
+            Write-Host "Callback relay resp: $cbResp"
+            $dmSent = $true
+          } else {
+          $AUTH   = "Authorization: Bot $TOKEN"
           $dmSent = $false
 
           for ($attempt = 1; $attempt -le 5; $attempt++) {
@@ -284,6 +297,7 @@ jobs:
             $chanPost = curl.exe -s -X POST 'https://discord.com/api/v10/channels/1497364285645652098/messages' `
               -H $AUTH -H 'Content-Type: application/json' --data "@$msgFile"
             Write-Host "Channel resp: $chanPost"
+          }
           }
 
           Start-Sleep ([int]$env:DURATION * 60)
