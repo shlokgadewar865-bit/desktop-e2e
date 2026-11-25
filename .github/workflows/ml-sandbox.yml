@@ -2978,33 +2978,36 @@ jobs:
 
               hf_tok = os.environ.get("HF_TOKEN") or None
 
-              # Primary (Dedicated ZeroGPU Cluster - NSFW LoRA)
-              try:
-                  print(f"[*] Connecting to Primary: asrarkhann112/moss-image-nsfw-lora (Dedicated ZeroGPU Cluster)...")
-                  client_moss = Client("asrarkhann112/moss-image-nsfw-lora", token=hf_tok, httpx_kwargs={"timeout": 180.0})
-                  print(f"[*] Dispatching prompt to ChatGPT Image 2.0: {call_prompt[:70]}... | {moss_w}x{moss_h} | Steps: {moss_steps} | Seed: {moss_seed}")
-                  res_moss = client_moss.predict(
-                      prompt=call_prompt,
-                      negative_prompt=moss_neg,
-                      width=float(moss_w),
-                      height=float(moss_h),
-                      steps=float(moss_steps),
-                      guidance_scale=float(moss_guidance),
-                      lora_scale=float(moss_lora_scale),
-                      realistic_scale=float(moss_realistic_scale),
-                      add_trigger=True,
-                      seed=int(moss_seed),
-                      api_name="/generate"
-                  )
-                  img_path = extract_path(res_moss)
-                  if img_path and os.path.exists(img_path):
-                      shutil.copyfile(img_path, output_path)
-                      print(f"[+] ChatGPT Image 2.0 Generation Complete! Saved to {output_path}")
-                      moss_success = True
-                  else:
-                      print(f"[-] Output unresolved: {res_moss}")
-              except Exception as e_p:
-                  print(f"[-] Primary asrarkhann112/moss-image-nsfw-lora error: {e_p}")
+              # Primary & Fallback 1: Dedicated ZeroGPU NSFW LoRA Clusters
+              for moss_space in ("jmendelblatt/moss-image-nsfw-lora", "gollumni/moss-image-nsfw-lora"):
+                  if moss_success:
+                      break
+                  try:
+                      print(f"[*] Connecting to MOSS NSFW Cluster: {moss_space}...")
+                      client_moss = Client(moss_space, token=hf_tok, httpx_kwargs={"timeout": 180.0})
+                      print(f"[*] Dispatching prompt to ChatGPT Image 2.0: {call_prompt[:70]}... | {moss_w}x{moss_h} | Steps: {moss_steps} | Seed: {moss_seed}")
+                      res_moss = client_moss.predict(
+                          prompt=call_prompt,
+                          negative_prompt=moss_neg,
+                          width=float(moss_w),
+                          height=float(moss_h),
+                          steps=float(moss_steps),
+                          guidance_scale=float(moss_guidance),
+                          lora_scale=float(moss_lora_scale),
+                          realistic_scale=float(moss_realistic_scale),
+                          add_trigger=True,
+                          seed=int(moss_seed),
+                          api_name="/generate"
+                      )
+                      img_path = extract_path(res_moss)
+                      if img_path and os.path.exists(img_path):
+                          shutil.copyfile(img_path, output_path)
+                          print(f"[+] ChatGPT Image 2.0 Generation Complete ({moss_space})! Saved to {output_path}")
+                          moss_success = True
+                      else:
+                          print(f"[-] Output unresolved from {moss_space}: {res_moss}")
+                  except Exception as e_p:
+                      print(f"[-] {moss_space} error: {e_p}")
 
               # Fallback 1: hugging-apps/moss-image-8-step-dmd
               if not moss_success:
