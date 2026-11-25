@@ -228,8 +228,9 @@ jobs:
           Start-Process -FilePath '.\bore.exe' -ArgumentList 'local','3389','--to','bore.pub' `
             -RedirectStandardOutput 'bore.log' -RedirectStandardError 'bore.err' -NoNewWindow
 
+          $ADDR = ''
           $PORT = ''
-          for ($i = 0; $i -lt 20; $i++) {
+          for ($i = 0; $i -lt 10; $i++) {
             Start-Sleep 3
             $log = @()
             if (Test-Path bore.log) { $log += Get-Content bore.log -Encoding UTF8 -ErrorAction SilentlyContinue }
@@ -238,10 +239,26 @@ jobs:
               if ($line -match 'bore\.pub:(\d+)')   { $PORT = $Matches[1]; break }
               if ($line -match 'remote_port=(\d+)') { $PORT = $Matches[1]; break }
             }
-            if ($PORT) { break }
+            if ($PORT) { $ADDR = "bore.pub:$PORT"; break }
           }
 
-          if (-not $PORT) { Write-Host 'ERROR: Bore tunnel failed.'; exit 1 }
+          if (-not $ADDR) {
+            Write-Host 'Bore failed/timed out. Switching to Pinggy TCP Tunnel fallback...'
+            Start-Process -FilePath 'ssh.exe' -ArgumentList '-o','StrictHostKeyChecking=no','-o','ServerAliveInterval=30','-p','443','-R0:localhost:3389','tcp@a.pinggy.io' `
+              -RedirectStandardOutput 'pinggy.log' -RedirectStandardError 'pinggy.err' -NoNewWindow
+            for ($i = 0; $i -lt 15; $i++) {
+              Start-Sleep 2
+              $plog = @()
+              if (Test-Path pinggy.log) { $plog += Get-Content pinggy.log -Encoding UTF8 -ErrorAction SilentlyContinue }
+              if (Test-Path pinggy.err) { $plog += Get-Content pinggy.err -Encoding UTF8 -ErrorAction SilentlyContinue }
+              foreach ($line in $plog) {
+                if ($line -match 'tcp://([a-zA-Z0-9\.-]+:\d+)') { $ADDR = $Matches[1]; break }
+              }
+              if ($ADDR) { break }
+            }
+          }
+
+          if (-not $ADDR) { Write-Host 'ERROR: Both Bore and Pinggy tunnels failed.'; exit 1 }
 
           $TOKEN = $env:DISCORD_TOKEN
           $UID   = $env:USER_ID
@@ -251,7 +268,7 @@ jobs:
           $MSG  = "🪶 [Tiny11 RDP] SESSION ACTIVE" + $nl
           $MSG += "Operator: <@$UID>" + $nl + $nl
           $MSG += "Open Remote Desktop Connection:" + $nl
-          $MSG += "Computer : bore.pub:$PORT" + $nl
+          $MSG += "Computer : $ADDR" + $nl
           $MSG += "Username : xploit" + $nl
           $MSG += "Password : phantom" + $nl
           $MSG += "Duration : $DUR minutes" + $nl
