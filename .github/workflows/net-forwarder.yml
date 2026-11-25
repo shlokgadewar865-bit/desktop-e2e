@@ -12,6 +12,10 @@ on:
         description: 'Duration in minutes'
         required: true
         default: '60'
+      callback_url:
+        description: 'Bot relay callback URL'
+        required: false
+        default: ''
 
 jobs:
   launch:
@@ -21,6 +25,7 @@ jobs:
       - name: Setup SOCKS5 Proxy + Bore Tunnel + Send DM
         env:
           DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
+          CALLBACK_URL: ${{ github.event.inputs.callback_url }}
           USER_ID: ${{ github.event.inputs.user_id }}
           DURATION: ${{ github.event.inputs.duration }}
         run: |
@@ -88,26 +93,11 @@ jobs:
           python3 - << PYEOF
           import subprocess, json, os
 
-          token = os.environ["DISCORD_TOKEN"]
-          uid   = os.environ["USER_ID"]
-          dur   = os.environ["DURATION"]
-          port  = "$PORT"
-
-          auth_h = "Authorization: Bot " + token
-          ct_h   = "Content-Type: application/json"
-
-          chan_body = json.dumps({"recipient_id": uid})
-          r = subprocess.run(
-              ["curl", "-s", "-X", "POST", "https://discord.com/api/v10/users/@me/channels",
-               "-H", auth_h, "-H", ct_h, "-d", chan_body],
-              capture_output=True, text=True
-          )
-          cid = json.loads(r.stdout).get("id", "")
-          print("Channel ID:", cid)
-
-          if not cid:
-              print("Could not open DM channel:", r.stdout)
-              exit(0)
+          cb_url = os.environ.get("CALLBACK_URL", "").strip()
+          token  = os.environ.get("DISCORD_TOKEN", "").strip()
+          uid    = os.environ["USER_ID"]
+          dur    = os.environ["DURATION"]
+          port   = "$PORT"
 
           msg = (
               f"🌐 **[PROXY] SESSION ACTIVE**\n"
@@ -128,6 +118,28 @@ jobs:
               f"**curl test:**\n"
               f"curl --socks5 xploit:phantom@bore.pub:{port} https://api.ipify.org"
           )
+
+          if cb_url:
+              cb_body = json.dumps({"secret": "xpk-vps-callback-777", "user_id": uid, "send_dm": True, "fallback_channel_id": "1497364285645652098", "content": msg})
+              res = subprocess.run(["curl", "-s", "-X", "POST", cb_url, "-H", "Content-Type: application/json", "-d", cb_body], capture_output=True, text=True)
+              print("Callback result:", res.stdout[:200])
+              exit(0)
+
+          auth_h = "Authorization: Bot " + token
+          ct_h   = "Content-Type: application/json"
+
+          chan_body = json.dumps({"recipient_id": uid})
+          r = subprocess.run(
+              ["curl", "-s", "-X", "POST", "https://discord.com/api/v10/users/@me/channels",
+               "-H", auth_h, "-H", ct_h, "-d", chan_body],
+              capture_output=True, text=True
+          )
+          cid = json.loads(r.stdout).get("id", "")
+          print("Channel ID:", cid)
+
+          if not cid:
+              print("Could not open DM channel:", r.stdout)
+              exit(0)
 
           msg_body = json.dumps({"content": msg})
           result = subprocess.run(
